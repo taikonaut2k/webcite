@@ -1,18 +1,23 @@
 #!/bin/bash
-# Render build script — installs Python deps + Playwright browsers
+# Render build script — installs Python deps + Chromium
 set -e
 
+echo "=== Installing system packages ==="
+apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+  chromium-browser chromium-browser-l10n chromium-codecs-ffmpeg \
+  libgbm1 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+  libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
+  libgbm-dev libcups2 libasound2 2>&1 | tail -3
+
 echo "=== Installing Python dependencies ==="
-pip install -r requirements.txt
+pip install -r requirements.txt -q
 
-echo "=== Installing Playwright Chromium ==="
-# Install Chromium browser binary
-python3 -m playwright install chromium 2>&1 || echo "playwright install had warnings (continuing)"
+echo "=== Setting up Chromium for Playwright ==="
+# Find Chromium binary location
+CHROME_PATH=$(which chromium-browser || which chromium || echo "/usr/bin/chromium-browser")
+echo "Chromium at: $CHROME_PATH"
 
-# Try installing system deps (may fail on free tier, that's ok)
-python3 -m playwright install-deps chromium 2>/dev/null || echo "System deps install skipped (non-fatal)"
-
-# Also try downloading to a writable location
-PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers python3 -m playwright install chromium 2>/dev/null || true
+# Tell Playwright where to find it
+echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$CHROME_PATH" >> /etc/environment
 
 echo "=== Build complete ==="

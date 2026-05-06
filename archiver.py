@@ -201,22 +201,18 @@ def capture_via_jina(url, timeout=30):
 
 def capture_via_scrapling_stealth(url, timeout=45, archive_dir=None):
     """Strategy 2: Scrapling StealthyFetcher. Best for JS/Cloudflare sites.
-    Also captures a full-page screenshot + downloads images."""
+    Also captures a full-page screenshot using the SAME browser session."""
     try:
         from scrapling.fetchers import StealthyFetcher
-        from playwright.async_api import async_playwright
-        import asyncio, re
+        from playwright.sync_api import sync_playwright
+        import re, os
         
         page = StealthyFetcher.fetch(url, headless=True, timeout=timeout)
         
         title = page.css('h1::text').get() or page.css('title::text').get() or ""
         body = page.css('p::text').getall()
-        
-        # Extract all text content
         all_text = page.css('body::text').getall()
         full_text = '\n'.join(t.strip() for t in all_text if t.strip())
-        
-        # Get raw HTML
         html = str(page)
         
         result = {
@@ -233,46 +229,52 @@ def capture_via_scrapling_stealth(url, timeout=45, archive_dir=None):
             "note": "Captured via headless browser"
         }
         
-        # Take screenshot using Playwright directly
+        # Take screenshot using Playwright (in same session if possible)
         if archive_dir:
             try:
-                async def take_screenshot():
-                    async with async_playwright() as p:
-                        browser = await p.chromium.launch(headless=True)
-                        context = await browser.new_context(
-                            viewport={"width": 1920, "height": 1080},
-                            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                        )
-                        page_pw = await context.new_page()
-                        await page_pw.goto(url, wait_until="networkidle", timeout=30000)
-                        await page_pw.wait_for_timeout(2000)
-                        
-                        # Full page screenshot
-                        ss_path = str(archive_dir / "screenshot.png")
-                        await page_pw.screenshot(path=ss_path, full_page=True)
-                        
-                        # Viewport screenshot
-                        vp_path = str(archive_dir / "screenshot_viewport.png")
-                        await page_pw.screenshot(path=vp_path, full_page=False)
-                        
-                        await browser.close()
-                        result["screenshot"] = "screenshot.png"
-                        result["screenshot_viewport"] = "screenshot_viewport.png"
-                asyncio.run(take_screenshot())
-            except Exception as e:
-                print(f"    ⚠ Screenshot failed: {e}")
+                import os as _os
+                # Try system Chromium if Playwright's bundled one isn't available
+                chrome_paths = [
+                    _os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", ""),
+                    "/usr/bin/chromium-browser",
+                    "/usr/bin/chromium",
+                    "/snap/bin/chromium",
+                ]
+                launch_opts = {
+                    "headless": True,
+                    "args": ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                }
+                for cp in chrome_paths:
+                    if cp and _os.path.exists(cp):
+                        launch_opts["executable_path"] = cp
+                        break
+                
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(**launch_opts)
+                    context = browser.new_context(viewport={"width": 1920, "height": 1080})
+                    pw_page = context.new_page()
+                    pw_page.goto(url, wait_until="load", timeout=30000)
+                    pw_page.wait_for_timeout(5000)
+                    ss_path = str(archive_dir / "screenshot.png")
+                    pw_page.screenshot(path=ss_path, full_page=True)
+                    vp_path = str(archive_dir / "screenshot_viewport.png")
+                    pw_page.screenshot(path=vp_path, full_page=False)
+                    browser.close()
+                    result["screenshot"] = "screenshot.png"
+                    result["screenshot_viewport"] = "screenshot_viewport.png"
+                    print(f"    ✅ Screenshot taken ({_os.path.getsize(ss_path)//1024} KB)")
+            except Exception as sce:
+                print(f"    ⚠ Screenshot skipped: {sce}")
         
-        # Download images from the HTML
+        # Download images
         if archive_dir and html:
             assets_dir = archive_dir / "assets"
             assets_dir.mkdir(exist_ok=True)
-            
             import urllib.request
             from urllib.parse import urljoin, urlparse
-            
             img_urls = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html)
             downloaded = 0
-            for img_url in img_urls[:50]:  # Max 50 images
+            for img_url in img_urls[:50]:
                 try:
                     full_url = urljoin(url, img_url)
                     parsed = urlparse(full_url)
@@ -282,12 +284,10 @@ def capture_via_scrapling_stealth(url, timeout=45, archive_dir=None):
                     img_name = f"img_{downloaded}{ext}"
                     img_path = assets_dir / img_name
                     urllib.request.urlretrieve(full_url, img_path)
-                    # Rewrite HTML to use local path
                     html = html.replace(img_url, f"assets/{img_name}", 1)
                     downloaded += 1
                 except:
                     pass
-            
             result["html"] = html
             result["downloaded_images"] = downloaded
             result["assets_dir"] = str(assets_dir)
