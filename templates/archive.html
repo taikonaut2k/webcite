@@ -196,10 +196,7 @@
             {% if record.has_screenshot %}
             <button class="tab-btn active" onclick="switchTab('screenshot')">Screenshot</button>
             {% endif %}
-            <button class="tab-btn {% if not record.has_screenshot and not record.content.markdown %}active{% endif %}" onclick="switchTab('text')">Text</button>
-            {% if record.content.markdown %}
-            <button class="tab-btn" onclick="switchTab('raw')">Raw</button>
-            {% endif %}
+
             {% if record.content.html and record.content.html|length > 500 %}
             <button class="tab-btn {% if not record.has_screenshot and not record.content.markdown %}active{% endif %}" onclick="switchTab('page')">Page View</button>
             {% endif %}
@@ -222,19 +219,9 @@
             {% endif %}
         </div>
         
-        <div id="tab-text" class="tab-panel">
-            {% if record.content.text %}
-            <div class="text-content">{{ record.content.text[:50000] }}</div>
-            {% else %}
-            <div class="not-found"><h2>No text content</h2></div>
-            {% endif %}
-        </div>
+
         
-        {% if record.content.markdown %}
-        <div id="tab-raw" class="tab-panel">
-            <div class="text-content">{{ record.content.markdown }}</div>
-        </div>
-        {% endif %}
+
         
         {% if record.content.html and record.content.html|length > 500 %}
         <div id="tab-page" class="tab-panel">
