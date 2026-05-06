@@ -388,7 +388,7 @@ def capture_url(url, premium=False):
             print(f"  ✅ {name} succeeded")
             break
     
-    # If text capture succeeded but no screenshot, try headless just for screenshot
+    # If text capture succeeded but no screenshot, try headless for screenshot
     if result["success"] and not result.get("screenshot") and archive_dir:
         print("  Trying headless for screenshot...")
         try:
@@ -411,7 +411,7 @@ def capture_url(url, premium=False):
                     print(f"  ✅ Screenshot captured")
             asyncio.run(take_screenshot_later())
         except Exception as e:
-            print(f"  ⚠ Screenshot failed: {e}")
+            print(f"  ⚠ Headless screenshot not available on this host: {e}")
     
     elapsed = round(time.time() - start_time, 2)
     
