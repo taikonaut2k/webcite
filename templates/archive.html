@@ -106,6 +106,17 @@
         .not-found h2 { font-size: 28px; margin-bottom: 12px; }
         .not-found p { color: #8b949e; }
         
+        /* Screenshot */
+        .screenshot-container { 
+            background: #0d1117; border: 1px solid #30363d; border-radius: 8px; 
+            padding: 16px; text-align: center;
+        }
+        .screenshot-img {
+            max-width: 100%; max-height: 80vh; border-radius: 4px;
+            border: 1px solid #21262d; cursor: zoom-in;
+        }
+        .screenshot-credit { font-size: 12px; color: #484f58; margin-top: 8px; }
+        
         @media (max-width: 768px) {
             .archive-header .top-row { flex-direction: column; align-items: flex-start; }
             .meta-bar { flex-direction: column; gap: 8px; }
@@ -144,7 +155,46 @@
             <br><a href="{{ record.url }}">{{ record.url[:80] }}{% if record.url|length > 80 %}...{% endif %}</a>
         </div>
         
+        {% if record.has_screenshot %}
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('screenshot')">Screenshot</button>
+            <button class="tab-btn" onclick="switchTab('text')">Text</button>
+            {% if record.content.markdown %}
+            <button class="tab-btn" onclick="switchTab('raw')">Raw</button>
+            {% endif %}
+        </div>
+        
+        <div id="tab-screenshot" class="tab-panel active">
+            <div class="screenshot-container">
+                <a href="/site/{{ record.id }}/{{ record.screenshot_file }}" target="_blank">
+                    <img src="/site/{{ record.id }}/{{ record.screenshot_viewport_file or record.screenshot_file }}" 
+                         alt="Page screenshot" class="screenshot-img">
+                </a>
+                <p class="screenshot-credit">Click to view full-page screenshot</p>
+            </div>
+            {% if record.content.text %}
+            <details style="margin-top:16px;">
+                <summary style="cursor:pointer;color:#58a6ff;font-size:14px;">Show extracted text ({{ record.text_length }} chars)</summary>
+                <div class="text-content" style="margin-top:8px;">{{ record.content.text[:10000] }}</div>
+            </details>
+            {% endif %}
+        </div>
+        
+        <div id="tab-text" class="tab-panel">
+            {% if record.content.text %}
+            <div class="text-content">{{ record.content.text[:50000] }}</div>
+            {% else %}
+            <div class="not-found"><h2>No text content</h2></div>
+            {% endif %}
+        </div>
+        
         {% if record.content.markdown %}
+        <div id="tab-raw" class="tab-panel">
+            <div class="text-content">{{ record.content.markdown }}</div>
+        </div>
+        {% endif %}
+        
+        {% elif record.content.markdown %}
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('rendered')">Rendered</button>
             <button class="tab-btn" onclick="switchTab('raw')">Raw</button>

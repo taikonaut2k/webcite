@@ -150,6 +150,14 @@ def search():
         results = search_archives(q)
     return render_template("search.html", query=q, results=results)
 
+@app.route("/site/<archive_id>/<path:filename>")
+def serve_archive_file(archive_id, filename):
+    """Serve archived files (screenshots, assets)."""
+    archive_dir = ARCHIVES_DIR / archive_id
+    if not archive_dir.exists():
+        return "Not found", 404
+    return send_from_directory(str(archive_dir), filename)
+
 # ═══════════════════════════════════════════════════════════════════
 #  API ENDPOINTS (for developers / monetization)
 # ═══════════════════════════════════════════════════════════════════

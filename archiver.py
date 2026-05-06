@@ -77,10 +77,13 @@ def capture_via_jina(url, timeout=30):
         pass
     return {"success": False, "method": "r.jina.ai"}
 
-def capture_via_scrapling_stealth(url, timeout=45):
-    """Strategy 2: Scrapling StealthyFetcher. Best for JS/Cloudflare sites."""
+def capture_via_scrapling_stealth(url, timeout=45, archive_dir=None):
+    """Strategy 2: Scrapling StealthyFetcher. Best for JS/Cloudflare sites.
+    Also captures a full-page screenshot + downloads images."""
     try:
         from scrapling.fetchers import StealthyFetcher
+        from playwright.async_api import async_playwright
+        import asyncio, re
         
         page = StealthyFetcher.fetch(url, headless=True, timeout=timeout)
         
@@ -94,7 +97,7 @@ def capture_via_scrapling_stealth(url, timeout=45):
         # Get raw HTML
         html = str(page)
         
-        return {
+        result = {
             "success": True,
             "method": "scrapling_stealth",
             "html": html,
@@ -102,8 +105,72 @@ def capture_via_scrapling_stealth(url, timeout=45):
             "raw_text": full_text,
             "title": title.strip() if title else "Untitled",
             "paragraphs": len(body),
+            "screenshot": None,
+            "downloaded_images": 0,
+            "assets_dir": None,
             "note": "Captured via headless browser"
         }
+        
+        # Take screenshot using Playwright directly
+        if archive_dir:
+            try:
+                async def take_screenshot():
+                    async with async_playwright() as p:
+                        browser = await p.chromium.launch(headless=True)
+                        context = await browser.new_context(
+                            viewport={"width": 1920, "height": 1080},
+                            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                        )
+                        page_pw = await context.new_page()
+                        await page_pw.goto(url, wait_until="networkidle", timeout=30000)
+                        await page_pw.wait_for_timeout(2000)
+                        
+                        # Full page screenshot
+                        ss_path = str(archive_dir / "screenshot.png")
+                        await page_pw.screenshot(path=ss_path, full_page=True)
+                        
+                        # Viewport screenshot
+                        vp_path = str(archive_dir / "screenshot_viewport.png")
+                        await page_pw.screenshot(path=vp_path, full_page=False)
+                        
+                        await browser.close()
+                        result["screenshot"] = "screenshot.png"
+                        result["screenshot_viewport"] = "screenshot_viewport.png"
+                asyncio.run(take_screenshot())
+            except Exception as e:
+                print(f"    ⚠ Screenshot failed: {e}")
+        
+        # Download images from the HTML
+        if archive_dir and html:
+            assets_dir = archive_dir / "assets"
+            assets_dir.mkdir(exist_ok=True)
+            
+            import urllib.request
+            from urllib.parse import urljoin, urlparse
+            
+            img_urls = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html)
+            downloaded = 0
+            for img_url in img_urls[:50]:  # Max 50 images
+                try:
+                    full_url = urljoin(url, img_url)
+                    parsed = urlparse(full_url)
+                    if not parsed.scheme.startswith('http'):
+                        continue
+                    ext = os.path.splitext(parsed.path)[1] or '.jpg'
+                    img_name = f"img_{downloaded}{ext}"
+                    img_path = assets_dir / img_name
+                    urllib.request.urlretrieve(full_url, img_path)
+                    # Rewrite HTML to use local path
+                    html = html.replace(img_url, f"assets/{img_name}", 1)
+                    downloaded += 1
+                except:
+                    pass
+            
+            result["html"] = html
+            result["downloaded_images"] = downloaded
+            result["assets_dir"] = str(assets_dir)
+        
+        return result
     except ImportError:
         return {"success": False, "method": "scrapling_stealth", "error": "scrapling not installed"}
     except Exception as e:
@@ -190,7 +257,10 @@ def capture_url(url, premium=False):
     
     for name, strategy_fn in strategies:
         print(f"  Trying {name}...")
-        result = strategy_fn(url)
+        if name == "Scrapling Stealth (headless)":
+            result = strategy_fn(url, archive_dir=archive_dir)
+        else:
+            result = strategy_fn(url)
         strategies_used.append(name)
         if result["success"]:
             print(f"  ✅ {name} succeeded")
@@ -234,6 +304,15 @@ def capture_url(url, premium=False):
     if result.get("raw_text"):
         with open(archive_dir / "text.txt", "w", encoding="utf-8") as f:
             f.write(result["raw_text"])
+    
+    # Update record with screenshot info
+    if result.get("screenshot"):
+        record["has_screenshot"] = True
+        record["screenshot_file"] = result["screenshot"]
+    if result.get("screenshot_viewport"):
+        record["screenshot_viewport_file"] = result["screenshot_viewport"]
+    if result.get("downloaded_images", 0) > 0:
+        record["downloaded_images"] = result["downloaded_images"]
     
     # Save metadata
     with open(archive_dir / "metadata.json", "w", encoding="utf-8") as f:
