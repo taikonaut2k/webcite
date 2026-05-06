@@ -1,23 +1,25 @@
 #!/bin/bash
-# Render build script — installs Python deps + Chromium
+# Render build script — installs Python deps + Playwright's bundled Chromium
 set -e
-
-echo "=== Installing system packages ==="
-apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-  chromium-browser chromium-browser-l10n chromium-codecs-ffmpeg \
-  libgbm1 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
-  libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
-  libgbm-dev libcups2 libasound2 2>&1 | tail -3
 
 echo "=== Installing Python dependencies ==="
 pip install -r requirements.txt -q
 
-echo "=== Setting up Chromium for Playwright ==="
-# Find Chromium binary location
-CHROME_PATH=$(which chromium-browser || which chromium || echo "/usr/bin/chromium-browser")
-echo "Chromium at: $CHROME_PATH"
+echo "=== Installing Playwright + bundled Chromium ==="
+# Install Playwright browsers to a writable location  
+python3 -m playwright install chromium 2>&1
 
-# Tell Playwright where to find it
-echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$CHROME_PATH" >> /etc/environment
+# Also try with explicit path
+PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers python3 -m playwright install chromium 2>/dev/null || true
+
+# Verify
+python3 -c "
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    path = p.chromium.executable_path
+    print(f'Chromium installed at: {path}')
+    import os
+    print(f'Exists: {os.path.exists(path)}')
+" 2>&1 || echo "⚠ Chromium verification failed"
 
 echo "=== Build complete ==="
