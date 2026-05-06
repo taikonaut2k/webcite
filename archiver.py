@@ -298,10 +298,14 @@ def capture_via_scrapling_stealth(url, timeout=45, archive_dir=None):
     except Exception as e:
         return {"success": False, "method": "scrapling_stealth", "error": str(e)}
 
-def capture_via_scrapling_fetcher(url, timeout=20):
-    """Strategy 3: Scrapling HTTP fetcher with TLS impersonation."""
+def capture_via_scrapling_fetcher(url, timeout=20, archive_dir=None):
+    """Strategy 3: Scrapling HTTP fetcher with TLS impersonation.
+    Downloads images from the HTML when possible."""
     try:
         from scrapling.fetchers import Fetcher
+        import re, os as _os
+        from urllib.parse import urljoin, urlparse
+        import urllib.request
         
         page = Fetcher.get(url, impersonate='chrome', stealthy_headers=True)
         
@@ -309,9 +313,11 @@ def capture_via_scrapling_fetcher(url, timeout=20):
         body = page.css('p::text').getall()
         all_text = page.css('body::text').getall()
         full_text = '\n'.join(t.strip() for t in all_text if t.strip())
-        html = str(page)
+        html = page.body  # response body = full HTML
+        if isinstance(html, bytes):
+            html = html.decode('utf-8', errors='replace')
         
-        return {
+        result = {
             "success": True,
             "method": "scrapling_http",
             "html": html,
@@ -319,8 +325,36 @@ def capture_via_scrapling_fetcher(url, timeout=20):
             "raw_text": full_text,
             "title": title.strip() if title else "Untitled",
             "paragraphs": len(body),
+            "downloaded_images": 0,
+            "assets_dir": None,
             "note": "Captured via HTTP with TLS fingerprint"
         }
+        
+        # Download images if archive_dir provided
+        if archive_dir and html:
+            assets_dir = archive_dir / "assets"
+            assets_dir.mkdir(exist_ok=True)
+            img_urls = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html)
+            downloaded = 0
+            for img_url in img_urls[:50]:
+                try:
+                    full_url = urljoin(url, img_url)
+                    parsed = urlparse(full_url)
+                    if not parsed.scheme.startswith('http'):
+                        continue
+                    ext = _os.path.splitext(parsed.path)[1] or '.jpg'
+                    img_name = f"img_{downloaded}{ext}"
+                    img_path = assets_dir / img_name
+                    urllib.request.urlretrieve(full_url, img_path)
+                    html = html.replace(img_url, f"assets/{img_name}", 1)
+                    downloaded += 1
+                except:
+                    pass
+            result["html"] = html
+            result["downloaded_images"] = downloaded
+            result["assets_dir"] = str(assets_dir)
+        
+        return result
     except ImportError:
         return {"success": False, "method": "scrapling_http", "error": "scrapling not installed"}
     except Exception as e:
@@ -369,17 +403,17 @@ def capture_url(url, premium=False):
     strategies_used = []
     result = None
     
-    # Try strategies in order (stealth first for full capture, then fallbacks)
+    # Try strategies in order (HTTP first for full HTML capture, then fallbacks)
     strategies = [
-        ("Scrapling Stealth (headless)", capture_via_scrapling_stealth),
-        ("r.jina.ai reader proxy", capture_via_jina),
         ("Scrapling HTTP (TLS)", capture_via_scrapling_fetcher),
+        ("r.jina.ai reader proxy", capture_via_jina),
+        ("Scrapling Stealth (headless)", capture_via_scrapling_stealth),
         ("Direct curl", capture_via_curl),
     ]
     
     for name, strategy_fn in strategies:
         print(f"  Trying {name}...")
-        if name == "Scrapling Stealth (headless)":
+        if name == "Scrapling Stealth (headless)" or name == "Scrapling HTTP (TLS)":
             result = strategy_fn(url, archive_dir=archive_dir)
         else:
             result = strategy_fn(url)
