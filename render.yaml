@@ -5,7 +5,7 @@ services:
     repo: https://github.com/YOUR_USERNAME/webcite
     plan: free
     region: oregon
-    buildCommand: pip install -r requirements.txt
+    buildCommand: bash render-build.sh
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     envVars:
       - key: PYTHON_VERSION
