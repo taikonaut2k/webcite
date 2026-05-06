@@ -265,6 +265,31 @@ def capture_url(url, premium=False):
         if result["success"]:
             print(f"  ✅ {name} succeeded")
             break
+    
+    # If text capture succeeded but no screenshot, try headless just for screenshot
+    if result["success"] and not result.get("screenshot") and archive_dir:
+        print("  Trying headless for screenshot...")
+        try:
+            from playwright.async_api import async_playwright
+            import asyncio
+            async def take_screenshot_later():
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch(headless=True)
+                    context = await browser.new_context(viewport={"width": 1920, "height": 1080})
+                    page_pw = await context.new_page()
+                    await page_pw.goto(url, wait_until="networkidle", timeout=30000)
+                    await page_pw.wait_for_timeout(2000)
+                    ss_path = str(archive_dir / "screenshot.png")
+                    await page_pw.screenshot(path=ss_path, full_page=True)
+                    vp_path = str(archive_dir / "screenshot_viewport.png")
+                    await page_pw.screenshot(path=vp_path, full_page=False)
+                    await browser.close()
+                    result["screenshot"] = "screenshot.png"
+                    result["screenshot_viewport"] = "screenshot_viewport.png"
+                    print(f"  ✅ Screenshot captured")
+            asyncio.run(take_screenshot_later())
+        except Exception as e:
+            print(f"  ⚠ Screenshot failed: {e}")
         print(f"  ❌ {name} failed")
     
     elapsed = round(time.time() - start_time, 2)
