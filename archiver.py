@@ -369,10 +369,10 @@ def capture_url(url, premium=False):
     strategies_used = []
     result = None
     
-    # Try strategies in order
+    # Try strategies in order (stealth first for full capture, then fallbacks)
     strategies = [
-        ("r.jina.ai reader proxy", capture_via_jina),
         ("Scrapling Stealth (headless)", capture_via_scrapling_stealth),
+        ("r.jina.ai reader proxy", capture_via_jina),
         ("Scrapling HTTP (TLS)", capture_via_scrapling_fetcher),
         ("Direct curl", capture_via_curl),
     ]
@@ -388,30 +388,9 @@ def capture_url(url, premium=False):
             print(f"  ✅ {name} succeeded")
             break
     
-    # If text capture succeeded but no screenshot, try headless for screenshot
-    if result["success"] and not result.get("screenshot") and archive_dir:
-        print("  Taking screenshot...")
-        try:
-            from playwright.sync_api import sync_playwright
-            with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-                )
-                context = browser.new_context(viewport={"width": 1920, "height": 1080})
-                page = context.new_page()
-                page.goto(url, wait_until="load", timeout=30000)
-                page.wait_for_timeout(5000)
-                ss_path = str(archive_dir / "screenshot.png")
-                page.screenshot(path=ss_path, full_page=True)
-                vp_path = str(archive_dir / "screenshot_viewport.png")
-                page.screenshot(path=vp_path, full_page=False)
-                browser.close()
-                result["screenshot"] = "screenshot.png"
-                result["screenshot_viewport"] = "screenshot_viewport.png"
-                print(f"  ✅ Screenshot captured ({os.path.getsize(ss_path)//1024} KB)")
-        except Exception as e:
-            print(f"  ⚠ Screenshot unavailable: {e}")
+    # If text capture succeeded but no screenshot, clean the text output
+    if result["success"] and result.get("raw_text"):
+        result["raw_text"] = clean_raw_text(result["raw_text"])
     
     elapsed = round(time.time() - start_time, 2)
     
