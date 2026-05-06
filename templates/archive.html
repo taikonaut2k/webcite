@@ -192,18 +192,20 @@
             <br><a href="{{ record.url }}">{{ record.url[:80] }}{% if record.url|length > 80 %}...{% endif %}</a>
         </div>
         
-        {% if record.has_screenshot %}
         <div class="tabs">
+            {% if record.has_screenshot %}
             <button class="tab-btn active" onclick="switchTab('screenshot')">Screenshot</button>
-            <button class="tab-btn" onclick="switchTab('text')">Text</button>
+            {% endif %}
+            <button class="tab-btn {% if not record.has_screenshot and not record.content.markdown %}active{% endif %}" onclick="switchTab('text')">Text</button>
             {% if record.content.markdown %}
             <button class="tab-btn" onclick="switchTab('raw')">Raw</button>
             {% endif %}
             {% if record.content.html and record.content.html|length > 500 %}
-            <button class="tab-btn" onclick="switchTab('page')">Page View</button>
+            <button class="tab-btn {% if not record.has_screenshot and not record.content.markdown %}active{% endif %}" onclick="switchTab('page')">Page View</button>
             {% endif %}
         </div>
         
+        {% if record.has_screenshot %}
         <div id="tab-screenshot" class="tab-panel active">
             <div class="screenshot-container">
                 <a href="/site/{{ record.id }}/{{ record.screenshot_file }}" target="_blank">
