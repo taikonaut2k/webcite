@@ -390,28 +390,28 @@ def capture_url(url, premium=False):
     
     # If text capture succeeded but no screenshot, try headless for screenshot
     if result["success"] and not result.get("screenshot") and archive_dir:
-        print("  Trying headless for screenshot...")
+        print("  Taking screenshot...")
         try:
-            from playwright.async_api import async_playwright
-            import asyncio
-            async def take_screenshot_later():
-                async with async_playwright() as p:
-                    browser = await p.chromium.launch(headless=True)
-                    context = await browser.new_context(viewport={"width": 1920, "height": 1080})
-                    page_pw = await context.new_page()
-                    await page_pw.goto(url, wait_until="networkidle", timeout=30000)
-                    await page_pw.wait_for_timeout(2000)
-                    ss_path = str(archive_dir / "screenshot.png")
-                    await page_pw.screenshot(path=ss_path, full_page=True)
-                    vp_path = str(archive_dir / "screenshot_viewport.png")
-                    await page_pw.screenshot(path=vp_path, full_page=False)
-                    await browser.close()
-                    result["screenshot"] = "screenshot.png"
-                    result["screenshot_viewport"] = "screenshot_viewport.png"
-                    print(f"  ✅ Screenshot captured")
-            asyncio.run(take_screenshot_later())
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                )
+                context = browser.new_context(viewport={"width": 1920, "height": 1080})
+                page = context.new_page()
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(3000)
+                ss_path = str(archive_dir / "screenshot.png")
+                page.screenshot(path=ss_path, full_page=True)
+                vp_path = str(archive_dir / "screenshot_viewport.png")
+                page.screenshot(path=vp_path, full_page=False)
+                browser.close()
+                result["screenshot"] = "screenshot.png"
+                result["screenshot_viewport"] = "screenshot_viewport.png"
+                print(f"  ✅ Screenshot captured ({os.path.getsize(ss_path)//1024} KB)")
         except Exception as e:
-            print(f"  ⚠ Headless screenshot not available on this host: {e}")
+            print(f"  ⚠ Screenshot unavailable: {e}")
     
     elapsed = round(time.time() - start_time, 2)
     
