@@ -403,17 +403,16 @@ def capture_url(url, premium=False):
     strategies_used = []
     result = None
     
-    # Try strategies in order (HTTP first for full HTML capture, then fallbacks)
+    # Try strategies in order (reader proxy first for fast clean text)
     strategies = [
-        ("Scrapling HTTP (TLS)", capture_via_scrapling_fetcher),
         ("r.jina.ai reader proxy", capture_via_jina),
-        ("Scrapling Stealth (headless)", capture_via_scrapling_stealth),
+        ("Scrapling HTTP (TLS)", capture_via_scrapling_fetcher),
         ("Direct curl", capture_via_curl),
     ]
     
     for name, strategy_fn in strategies:
         print(f"  Trying {name}...")
-        if name == "Scrapling Stealth (headless)" or name == "Scrapling HTTP (TLS)":
+        if name == "Scrapling HTTP (TLS)":
             result = strategy_fn(url, archive_dir=archive_dir)
         else:
             result = strategy_fn(url)
