@@ -290,7 +290,6 @@ def capture_url(url, premium=False):
             asyncio.run(take_screenshot_later())
         except Exception as e:
             print(f"  ⚠ Screenshot failed: {e}")
-        print(f"  ❌ {name} failed")
     
     elapsed = round(time.time() - start_time, 2)
     
