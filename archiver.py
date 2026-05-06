@@ -21,7 +21,127 @@ INDEX_PATH = Path.home() / "archive-clone" / "archives" / "index.json"
 
 ARCHIVES_DIR.mkdir(parents=True, exist_ok=True)
 
-# ── Index Management ────────────────────────────────────────────────
+# ── Content Cleaning ────────────────────────────────────────────────
+
+def clean_markdown(text):
+    """
+    Strip navigation, ads, footers, and list clutter from r.jina.ai markdown output.
+    Keeps only the article content between the first real heading and the 
+    last meaningful paragraph.
+    """
+    lines = text.split('\n')
+    cleaned = []
+    in_article = False
+    article_end = False
+    
+    # Known navigation/boilerplate patterns to skip (case-insensitive)
+    skip_patterns = [
+        r'^ad feedback',
+        r'^cnn values your feedback',
+        r'^how relevant is this ad',
+        r'^did you encounter any',
+        r'^video player was slow',
+        r'^ad never loaded',
+        r'^thank you',
+        r'^your effort and contribution',
+        r'^close',
+        r'^cancel submit',
+        r'^\[x\]',
+        r'^follow cnn',
+        r'^download the cnn app',
+        r'^sign in',
+        r'^my account',
+        r'^edition',
+        r'^hot stocks',
+        r'^fear & greed',
+        r'^latest market news',
+        r'^something isn\'t loading',
+        r'^markets$',
+        r'^subscribe$',
+        r'^listen$',
+        r'^watch$',
+        r'^\* \* \*$',
+        r'^\[\]\(http',
+        r'^link copied!',
+        r'^see all topics',
+        r'^facebook tweet',
+        r'^\+[0-9]+\.[0-9]+%?$',
+        r'^[0-9]+\.[0-9]+$',
+        r'^[A-Z]{2,5}$',  # Stock tickers like NVDA, INTC
+        r'^[\s]*$',
+    ]
+    skip_regex = re.compile('|'.join(skip_patterns), re.IGNORECASE)
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        # Detect article start: first # heading that's not the site title
+        if stripped.startswith('# ') and not in_article:
+            # Check it's a real article heading, not CNN/Bloomberg branding
+            if not any(brand in stripped.lower() for brand in ['bloomberg', 'cnn business', 'cnn logo', 'skip to content']):
+                in_article = True
+                cleaned.append(stripped)
+                continue
+        
+        if not in_article:
+            continue
+        
+        # Detect article end: common CNN footer markers
+        if any(marker in stripped.lower() for marker in [
+            'cnn\'s .* contributed to this report',
+            'contributing to this report',
+            '™ & ©',
+            'terms of use',
+            'privacy policy',
+            'manage cookies',
+            'all rights reserved',
+        ]):
+            if re.search(r'cnn\'s|contributing|rights reserved', stripped.lower()):
+                cleaned.append(stripped)
+                article_end = True
+                continue
+        
+        if article_end:
+            continue
+        
+        # Skip navigation/boilerplate lines
+        if skip_regex.match(stripped):
+            continue
+        
+        # Skip lines that are just star-list navigation items
+        if stripped.startswith('* ') and len(stripped) < 100:
+            continue
+        
+        # Skip lines that are just URLs in markdown link format
+        if re.match(r'^\[.*?\]\(https?://', stripped) and '|' not in stripped:
+            continue
+        
+        # Skip stock data lines (numbers, tickers)
+        if re.match(r'^[A-Z]{2,5}$', stripped):
+            continue
+        if re.match(r'^[+-]?\d+\.?\d*%?$', stripped) and len(stripped) < 15:
+            continue
+        
+        # Skip standalone commas and punctuation-only lines
+        if re.match(r'^[,\.;:\s]+$', stripped):
+            continue
+        
+        # Skip update/publish timestamp lines
+        if re.match(r'^updated|^published', stripped, re.IGNORECASE):
+            continue
+        
+        cleaned.append(stripped)
+    
+    return '\n'.join(cleaned).strip()
+
+
+def clean_raw_text(text):
+    """
+    Remove lines starting with * (navigation items) from raw text.
+    """
+    lines = text.split('\n')
+    cleaned = [l for l in lines if not l.strip().startswith('* ')]
+    return '\n'.join(cleaned).strip()
 
 def load_index():
     if INDEX_PATH.exists():
@@ -64,11 +184,13 @@ def capture_via_jina(url, timeout=30):
                     title = line.replace('Title: ', '', 1).strip()
                     break
             
+            cleaned_md = clean_markdown(r.stdout)
+            
             return {
                 "success": True,
                 "method": "r.jina.ai",
-                "markdown": r.stdout,
-                "raw_text": r.stdout,
+                "markdown": cleaned_md,
+                "raw_text": clean_raw_text(cleaned_md),
                 "html": None,
                 "title": title,
                 "note": "Captured via reader proxy"
