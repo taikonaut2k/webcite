@@ -28,11 +28,16 @@ def clean_markdown(text):
     Strip navigation, ads, footers, and list clutter from r.jina.ai markdown output.
     Keeps only the article content between the first real heading and the 
     last meaningful paragraph.
+    
+    Handles both # (H1) and ##/### (H2/H3) headings. Falls back to including
+    all lines after "Markdown Content:" if no heading is found.
     """
     lines = text.split('\n')
     cleaned = []
     in_article = False
     article_end = False
+    passed_markdown_header = False
+    non_blank_count = 0  # count non-blank lines scanned before article starts
     
     # Known navigation/boilerplate patterns to skip (case-insensitive)
     skip_patterns = [
@@ -75,8 +80,14 @@ def clean_markdown(text):
     for line in lines:
         stripped = line.strip()
         
-        # Detect article start: first # heading that's not the site title
-        if stripped.startswith('# ') and not in_article:
+        # Track when we pass the "Markdown Content:" header
+        if stripped.lower().startswith('markdown content'):
+            passed_markdown_header = True
+            continue
+        
+        # Detect article start: first heading (#, ##, or ###) that's not site branding
+        heading_match = re.match(r'^#{1,3}\s', stripped)
+        if heading_match and not in_article:
             # Check it's a real article heading, not CNN/Bloomberg branding
             if not any(brand in stripped.lower() for brand in ['bloomberg', 'cnn business', 'cnn logo', 'skip to content']):
                 in_article = True
@@ -84,9 +95,17 @@ def clean_markdown(text):
                 continue
         
         if not in_article:
+            # Fallback: if we've passed "Markdown Content:" and scanned 3+ non-blank
+            # lines with no heading found, treat everything as article content
+            if passed_markdown_header and stripped:
+                non_blank_count += 1
+                if non_blank_count >= 3:
+                    in_article = True
+                    cleaned.append(stripped)
+                    continue
             continue
         
-        # Detect article end: common CNN footer markers
+        # Detect article end: common footer markers
         if any(marker in stripped.lower() for marker in [
             'cnn\'s .* contributed to this report',
             'contributing to this report',
@@ -185,6 +204,24 @@ def capture_via_jina(url, timeout=30):
                     break
             
             cleaned_md = clean_markdown(r.stdout)
+            
+            # Fallback: if cleaning stripped everything, use raw text with header lines removed
+            if len(cleaned_md.strip()) < 100:
+                # Strip the Title:/URL Source:/Published Time: header lines
+                raw_lines = r.stdout.split('\n')
+                body_start = 0
+                for i, line in enumerate(raw_lines):
+                    if line.strip().lower().startswith('markdown content'):
+                        body_start = i + 1
+                        break
+                fallback_text = '\n'.join(raw_lines[body_start:]).strip()
+                # Also strip the leading image/URL boilerplate
+                fallback_lines = [l for l in fallback_text.split('\n')
+                                  if not re.match(r'^\[!\[.*?\]\(.*?\)\]\(.*?\)', l.strip())
+                                  and not l.strip().startswith('![')]
+                fallback_text = '\n'.join(fallback_lines).strip()
+                if len(fallback_text) > len(cleaned_md):
+                    cleaned_md = fallback_text
             
             return {
                 "success": True,
