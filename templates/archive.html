@@ -157,6 +157,20 @@
             .archive-header .top-row { flex-direction: column; align-items: flex-start; }
             .meta-bar { flex-direction: column; gap: 8px; }
         }
+        
+        /* Image gallery */
+        .image-gallery {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        .gallery-item {
+            background: var(--bg-tertiary); border: 1px solid var(--border-color);
+            border-radius: 8px; overflow: hidden; padding: 8px;
+        }
+        .gallery-img {
+            width: 100%; height: auto; border-radius: 4px; display: block;
+            cursor: zoom-in;
+        }
     </style>
 </head>
 <body>
@@ -192,17 +206,51 @@
             <br><a href="{{ record.url }}">{{ record.url[:80] }}{% if record.url|length > 80 %}...{% endif %}</a>
         </div>
         
+        {% if record.content.text or record.content.markdown %}
         <div class="tabs">
-            {% if record.has_screenshot %}
-            <button class="tab-btn active" onclick="switchTab('screenshot')">Screenshot</button>
+            <button class="tab-btn active" onclick="switchTab('content')">Rendered</button>
+            {% if record.downloaded_images %}
+            <button class="tab-btn" onclick="switchTab('images')">Images ({{ record.downloaded_images }})</button>
             {% endif %}
+            {% if record.content.markdown %}
+            <button class="tab-btn" onclick="switchTab('raw')">Raw text</button>
+            {% endif %}
+        </div>
 
-            {% if record.content.html and record.content.html|length > 500 %}
-            <button class="tab-btn {% if not record.has_screenshot and not record.content.markdown %}active{% endif %}" onclick="switchTab('page')">Page View</button>
+        <div id="tab-content" class="tab-panel active">
+            {% if record.content.markdown %}
+            <div class="markdown-content">
+                {{ record.content.markdown.split('\n\n', 2)[-1] | replace('\n', '<br>') | safe }}
+            </div>
+            {% elif record.content.text %}
+            <div class="text-content">{{ record.content.text[:50000] }}</div>
             {% endif %}
         </div>
         
-        {% if record.has_screenshot %}
+        {% if record.downloaded_images %}
+        <div id="tab-images" class="tab-panel">
+            <div class="image-gallery">
+            {% for img_file in record.image_files %}
+                <div class="gallery-item">
+                    <a href="/site/{{ record.id }}/{{ img_file }}" target="_blank">
+                        <img src="/site/{{ record.id }}/{{ img_file }}" alt="Article image {{ loop.index }}" class="gallery-img">
+                    </a>
+                </div>
+            {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if record.content.markdown %}
+        <div id="tab-raw" class="tab-panel">
+            <div class="text-content">{{ record.content.markdown }}</div>
+        </div>
+        {% endif %}
+        
+        {% elif record.has_screenshot %}
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('screenshot')">Screenshot</button>
+        </div>
         <div id="tab-screenshot" class="tab-panel active">
             <div class="screenshot-container">
                 <a href="/site/{{ record.id }}/{{ record.screenshot_file }}" target="_blank">
@@ -211,59 +259,17 @@
                 </a>
                 <p class="screenshot-credit">Click to view full-page screenshot</p>
             </div>
-            {% if record.content.text %}
-            <details style="margin-top:16px;">
-                <summary style="cursor:pointer;color:#58a6ff;font-size:14px;">Show extracted text ({{ record.text_length }} chars)</summary>
-                <div class="text-content" style="margin-top:8px;">{{ record.content.text[:10000] }}</div>
-            </details>
-            {% endif %}
         </div>
-        
-
-        
-
-        
-        {% if record.content.html and record.content.html|length > 500 %}
-        <div id="tab-page" class="tab-panel">
-            <div style="background:white;border:1px solid var(--border-color);border-radius:8px;overflow:hidden;">
-                <iframe srcdoc="{{ record.content.html[:200000] | e }}" 
-                        style="width:100%;height:80vh;border:none;"
-                        sandbox="allow-same-origin"></iframe>
-            </div>
-            {% if record.downloaded_images %}
-            <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">
-                📷 {{ record.downloaded_images }} images captured locally</p>
-            {% endif %}
-        </div>
-        {% endif %}
-        
-        {% elif record.content.markdown %}
-        <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('rendered')">Rendered</button>
-            <button class="tab-btn" onclick="switchTab('raw')">Raw</button>
-        </div>
-        
-        <div id="tab-rendered" class="tab-panel active">
-            <div class="markdown-content">
-                {{ record.content.markdown.split('\n\n', 2)[-1] | replace('\n', '<br>') | safe }}
-            </div>
-        </div>
-        
-        <div id="tab-raw" class="tab-panel">
-            <div class="text-content">{{ record.content.markdown }}</div>
-        </div>
-        
-        {% elif record.content.text %}
-        <div class="text-content">{{ record.content.text[:50000] }}</div>
         
         {% else %}
         <div class="not-found">
-            <h2>No text content</h2>
-            <p>This archive has no text content. The page may be image-based or require authentication.</p>
+            <h2>No content captured</h2>
+            <p>This archive has no text content. The page may be image-based, require authentication, or all capture strategies failed.</p>
+            <p style="margin-top:12px;font-size:13px;color:var(--text-muted);">Tried: {{ record.strategies_tried | join(', ') }}</p>
         </div>
         {% endif %}
     </div>
-    
+
     <script>
     function switchTab(name) {
         document.querySelectorAll('.tab-panel').forEach(t => t.classList.remove('active'));

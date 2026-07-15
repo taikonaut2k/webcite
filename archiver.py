@@ -154,6 +154,35 @@ def clean_markdown(text):
     return '\n'.join(cleaned).strip()
 
 
+def html_to_text(html):
+    """Strip HTML tags and extract readable text from raw HTML."""
+    import re
+    # Remove scripts and styles
+    text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Find article body / main content area first (best effort)
+    body = re.search(r'<body[^>]*>(.*)</body>', text, re.DOTALL | re.IGNORECASE)
+    if body:
+        text = body.group(1)
+    
+    # Replace common block elements with newlines
+    text = re.sub(r'</?(?:p|div|h[1-6]|li|br|tr|blockquote|section|article|header|footer)\b[^>]*>', '\n', text, flags=re.IGNORECASE)
+    
+    # Strip all remaining tags
+    text = re.sub(r'<[^>]+>', ' ', text)
+    
+    # Decode common HTML entities
+    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+    text = text.replace('&quot;', '"').replace('&#39;', "'").replace('&nbsp;', ' ')
+    
+    # Collapse whitespace
+    lines = text.split('\n')
+    lines = [re.sub(r'\s+', ' ', l).strip() for l in lines]
+    text = '\n'.join(l for l in lines if l)
+    
+    return text.strip()
+
 def clean_raw_text(text):
     """
     Remove lines starting with * (navigation items) from raw text.
@@ -203,11 +232,17 @@ def capture_via_jina(url, timeout=30):
                     title = line.replace('Title: ', '', 1).strip()
                     break
             
+            # Detect false successes: r.jina.ai sometimes returns 200 with a block page
+            title_lower = title.lower()
+            if title_lower in ('error', 'blocked', 'denied', 'forbidden', 'captcha', 'please wait', 'just a moment'):
+                return {"success": False, "method": "r.jina.ai", "error": f"reader proxy blocked: {title}"}
+            
             cleaned_md = clean_markdown(r.stdout)
             
-            # Fallback: if cleaning stripped everything, use raw text with header lines removed
-            if len(cleaned_md.strip()) < 100:
-                # Strip the Title:/URL Source:/Published Time: header lines
+            # Fallback thresholds: if cleaned output is tiny even after trying,
+            # consider this a failure so the chain continues to curl_real etc.
+            if len(cleaned_md.strip()) < 300:
+                # Try raw text fallback from body
                 raw_lines = r.stdout.split('\n')
                 body_start = 0
                 for i, line in enumerate(raw_lines):
@@ -215,13 +250,17 @@ def capture_via_jina(url, timeout=30):
                         body_start = i + 1
                         break
                 fallback_text = '\n'.join(raw_lines[body_start:]).strip()
-                # Also strip the leading image/URL boilerplate
                 fallback_lines = [l for l in fallback_text.split('\n')
                                   if not re.match(r'^\[!\[.*?\]\(.*?\)\]\(.*?\)', l.strip())
                                   and not l.strip().startswith('![')]
                 fallback_text = '\n'.join(fallback_lines).strip()
+                
                 if len(fallback_text) > len(cleaned_md):
                     cleaned_md = fallback_text
+                
+                # If still tiny after all fallback attempts, let next strategy try
+                if len(cleaned_md.strip()) < 300:
+                    return {"success": False, "method": "r.jina.ai", "error": "reader proxy returned no meaningful content"}
             
             return {
                 "success": True,
@@ -235,6 +274,126 @@ def capture_via_jina(url, timeout=30):
     except Exception as e:
         pass
     return {"success": False, "method": "r.jina.ai"}
+
+def capture_via_fallback_proxy(url, timeout=30):
+    """Strategy 1b: Fallback reader proxy (md.dhr.wtf) if r.jina.ai fails or returns nothing."""
+    try:
+        r = subprocess.run([
+            "curl", "-sL", "-m", str(timeout),
+            f"https://md.dhr.wtf/?url={url}",
+            "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        ], capture_output=True, text=True, timeout=timeout+5)
+        
+        if r.returncode == 0 and r.stdout and len(r.stdout) > 300:
+            title = "Untitled"
+            for line in r.stdout.split('\n'):
+                line_s = line.strip()
+                if line_s.startswith('# ') and len(line_s) > 3:
+                    title = line_s.replace('# ', '', 1).strip()
+                    break
+            
+            # Detect block pages
+            if title.lower() in ('error', 'blocked', 'denied', 'forbidden', 'captcha', 'please wait', 'just a moment'):
+                return {"success": False, "method": "md.dhr.wtf", "error": f"proxy blocked: {title}"}
+            
+            # Also check raw HTML for Cloudflare/CAPTCHA when no heading was found
+            if title == "Untitled":
+                lowered = r.stdout.lower()
+                if any(kw in lowered for kw in ['just a moment', 'cloudflare', 'checking your browser', 'attention required', 'enable javascript', 'captcha']):
+                    return {"success": False, "method": "md.dhr.wtf", "error": "proxy returned challenge page"}
+            
+            cleaned = r.stdout.strip()
+            
+            # If content is too short (< 300 meaningful chars), let chain continue
+            if len(cleaned) < 300:
+                return {"success": False, "method": "md.dhr.wtf", "error": "proxy returned no meaningful content"}
+            
+            return {
+                "success": True,
+                "method": "md.dhr.wtf",
+                "markdown": cleaned,
+                "raw_text": clean_raw_text(cleaned),
+                "html": None,
+                "title": title,
+                "note": "Captured via fallback reader proxy"
+            }
+    except Exception as e:
+        pass
+    return {"success": False, "method": "md.dhr.wtf"}
+
+def capture_via_cnn_lite(url, timeout=20, archive_dir=None):
+    """Strategy 2: CNN lite mode — rewrite cnn.com URLs to lite.cnn.com for clean HTML.
+    Also extracts hero/article images from the regular CNN page metadata."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if 'cnn.com' not in parsed.netloc:
+        return {"success": False, "method": "cnn_lite", "error": "not a CNN URL"}
+    
+    lite_url = f"https://lite.cnn.com{parsed.path}"
+    # Strip trailing /index.html if present
+    if lite_url.endswith('/index.html'):
+        lite_url = lite_url[:-11]
+    
+    try:
+        r = subprocess.run([
+            "curl", "-s", "-L", "--max-time", str(timeout),
+            "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "-H", "Accept-Language: en-US,en;q=0.9",
+            lite_url
+        ], capture_output=True, text=True, timeout=timeout+5)
+        
+        if r.returncode == 0 and len(r.stdout) > 500 and "captcha" not in r.stdout.lower():
+            title = "Untitled"
+            m = re.search(r'<title[^>]*>(.*?)</title>', r.stdout, re.IGNORECASE | re.DOTALL)
+            if m:
+                title = m.group(1).strip()
+            
+            result = {
+                "success": True,
+                "method": "cnn_lite",
+                "html": r.stdout,
+                "markdown": None,
+                "raw_text": r.stdout,
+                "title": title,
+                "note": "Captured via CNN lite mode"
+            }
+            
+            return result
+    except:
+        pass
+    return {"success": False, "method": "cnn_lite"}
+
+def capture_via_curl_real(url, timeout=20):
+    """Direct curl with real browser headers — works where reader proxies fail (e.g. CNN)."""
+    try:
+        r = subprocess.run([
+            "curl", "-s", "-L", "--max-time", str(timeout),
+            "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "-H", "Accept-Language: en-US,en;q=0.9",
+            url
+        ], capture_output=True, text=True, timeout=timeout+5)
+
+        if r.returncode == 0 and len(r.stdout) > 500 and "captcha" not in r.stdout.lower():
+            # Try to extract a title from the HTML
+            title = "Untitled"
+            m = re.search(r'<title[^>]*>(.*?)</title>', r.stdout, re.IGNORECASE | re.DOTALL)
+            if m:
+                title = m.group(1).strip()
+
+            return {
+                "success": True,
+                "method": "curl_real",
+                "html": r.stdout,
+                "markdown": None,
+                "raw_text": r.stdout,
+                "title": title,
+                "note": "Captured via direct curl with browser headers"
+            }
+    except:
+        pass
+    return {"success": False, "method": "curl_real"}
 
 def capture_via_scrapling_stealth(url, timeout=45, archive_dir=None):
     """Strategy 2: Scrapling StealthyFetcher. Best for JS/Cloudflare sites.
@@ -443,13 +602,16 @@ def capture_url(url, premium=False):
     # Try strategies in order (reader proxy first for fast clean text)
     strategies = [
         ("r.jina.ai reader proxy", capture_via_jina),
+        ("md.dhr.wtf fallback proxy", capture_via_fallback_proxy),
+        ("CNN lite mode", capture_via_cnn_lite),
+        ("curl_real browser headers", capture_via_curl_real),
         ("Scrapling HTTP (TLS)", capture_via_scrapling_fetcher),
         ("Direct curl", capture_via_curl),
     ]
     
     for name, strategy_fn in strategies:
         print(f"  Trying {name}...")
-        if name == "Scrapling HTTP (TLS)":
+        if name in ("Scrapling HTTP (TLS)", "CNN lite mode"):
             result = strategy_fn(url, archive_dir=archive_dir)
         else:
             result = strategy_fn(url)
@@ -495,10 +657,69 @@ def capture_url(url, premium=False):
         with open(archive_dir / "page.md", "w", encoding="utf-8") as f:
             f.write(result["markdown"])
     
-    # Also save raw text
-    if result.get("raw_text"):
+    # Also save raw text (convert HTML to plain text when needed)
+    raw_text = result.get("raw_text", "")
+    if raw_text:
+        # Detect if raw_text is HTML (from curl strategies) and convert to readable text
+        stripped = raw_text.strip()
+        if stripped.startswith("<!") or stripped.startswith("<html"):
+            text_content = html_to_text(raw_text)
+        else:
+            text_content = raw_text
         with open(archive_dir / "text.txt", "w", encoding="utf-8") as f:
-            f.write(result["raw_text"])
+            f.write(text_content)
+        # Update the record's text_length to reflect cleaned text length
+        record["text_length"] = len(text_content)
+    
+    # ── Image extraction for CNN articles ──────────────────────────
+    # If the capture succeeded with text but no images, try to extract
+    # images from the regular CNN page metadata (works for any strategy).
+    if result["success"] and 'cnn.com' in parsed.netloc and not result.get("downloaded_images", 0):
+        try:
+            assets_dir = archive_dir / "assets"
+            assets_dir.mkdir(exist_ok=True)
+            
+            meta = subprocess.run([
+                "curl", "-s", "-L", "--max-time", "10", url,
+                "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            ], capture_output=True, text=True, timeout=15)
+            
+            if meta.returncode == 0:
+                import urllib.request
+                img_urls = set()
+                html_meta = meta.stdout
+                
+                # og:image
+                og = re.search(r'''<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']''', html_meta)
+                if og:
+                    img_urls.add(og.group(1))
+                # JSON-LD images
+                for j in re.findall(r'''<script[^>]+type=["']application/ld\+json["'][^>]*>(.*?)</script>''', html_meta, re.DOTALL):
+                    for u in re.findall(r'"https://media\.cnn\.com[^"]*\.(?:jpg|jpeg|png|webp)"', j, re.IGNORECASE):
+                        img_urls.add(u.strip('"'))
+                # <img> tags
+                for u in re.findall(r'''<img[^>]+src=["'](https://media\.cnn\.com[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']''', html_meta, re.IGNORECASE):
+                    img_urls.add(u)
+                
+                downloaded = 0
+                img_exts = []
+                for img_url in list(img_urls)[:5]:
+                    try:
+                        ext = re.search(r'\.(jpg|jpeg|png|webp)', img_url, re.IGNORECASE)
+                        ext = (ext.group(1) if ext else 'jpg').lower()
+                        urllib.request.urlretrieve(img_url, assets_dir / f"img_{downloaded}.{ext}")
+                        img_exts.append(ext)
+                        downloaded += 1
+                    except:
+                        pass
+                
+                if downloaded:
+                    result["downloaded_images"] = downloaded
+                    result["assets_dir"] = str(assets_dir)
+                    record["downloaded_images"] = downloaded
+                    record["image_files"] = [f"assets/img_{i}.{ext}" for i, ext in enumerate(img_exts)]
+        except:
+            pass
     
     # Update record with screenshot info
     if result.get("screenshot"):
