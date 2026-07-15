@@ -680,8 +680,10 @@ def capture_url(url, premium=False):
             assets_dir.mkdir(exist_ok=True)
             
             meta = subprocess.run([
-                "curl", "-s", "-L", "--max-time", "10", url,
-                "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "curl", "-s", "-L", "--max-time", "12", "--range", "150000-650000", url,
+                "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "-H", "Accept-Language: en-US,en;q=0.9"
             ], capture_output=True, text=True, timeout=15)
             
             if meta.returncode == 0:
@@ -689,17 +691,19 @@ def capture_url(url, premium=False):
                 img_urls = set()
                 html_meta = meta.stdout
                 
-                # og:image
+                # og:image — the hero photo
                 og = re.search(r'''<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']''', html_meta)
                 if og:
                     img_urls.add(og.group(1))
-                # JSON-LD images
+                # JSON-LD images (structured data)
                 for j in re.findall(r'''<script[^>]+type=["']application/ld\+json["'][^>]*>(.*?)</script>''', html_meta, re.DOTALL):
                     for u in re.findall(r'"https://media\.cnn\.com[^"]*\.(?:jpg|jpeg|png|webp)"', j, re.IGNORECASE):
                         img_urls.add(u.strip('"'))
-                # <img> tags
-                for u in re.findall(r'''<img[^>]+src=["'](https://media\.cnn\.com[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']''', html_meta, re.IGNORECASE):
-                    img_urls.add(u)
+                # stellar/prod images from embedded config (article images in JSON blobs)
+                for u in re.findall(r'"https://media\.cnn\.com/api/v1/images/stellar/prod/[^"]+\.(?:JPG|jpg|jpeg|png|webp)"', html_meta):
+                    base = u.strip('"').split('?')[0]
+                    if not any(x in base.lower() for x in ['icon', 'logo', 'placeholder', 'fallback', 'style', 'apple-news', 'bg.']):
+                        img_urls.add(u.strip('"'))
                 
                 downloaded = 0
                 img_exts = []
