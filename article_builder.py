@@ -137,9 +137,10 @@ def build_article(archive_dir, url, html, assets_rel="assets"):
 
         credit_html = f'<span class="img-credit">{credit}</span>' if credit else ""
         caption_html = f'<figcaption>{caption} {credit_html}</figcaption>' if (caption or credit) else ""
+        # ABSOLUTE path via /site route (relative paths break inside /a/<id>/article)
         fig_html += (
             f'<figure class="article-figure">'
-            f'<img src="{assets_rel}/{fname}" alt="{caption[:120]}" loading="lazy">'
+            f'<img src="/site/{archive_dir.name}/assets/{fname}" alt="{caption[:120]}" loading="lazy">'
             f'{caption_html}'
             f'</figure>'
         )
@@ -233,7 +234,7 @@ def build_article(archive_dir, url, html, assets_rel="assets"):
   {f'<div class="desc">{description}</div>' if description else ''}
   <div class="actions">
     <a href="/a/{archive_dir.name}/raw">📄 Text view</a>
-    <a href="/a/{archive_dir.name}/original">🌐 Original page</a>
+    <a href="/a/{archive_dir.name}">⬅ Back to archive</a>
   </div>
   {body_html}
   {video_html}

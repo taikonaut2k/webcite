@@ -211,9 +211,6 @@
             {% if record.article_view and record.article_view.available %}
             <button class="tab-btn active" onclick="switchTab('article')">📰 Article (photos/video)</button>
             {% endif %}
-            {% if record.full_page and record.full_page.available %}
-            <button class="tab-btn" onclick="switchTab('original')">Original page</button>
-            {% endif %}
             <button class="tab-btn {% if not (record.article_view and record.article_view.available) %}active{% endif %}" onclick="switchTab('content')">Rendered</button>
             {% if record.downloaded_images %}
             <button class="tab-btn" onclick="switchTab('images')">Images ({{ record.downloaded_images }})</button>
