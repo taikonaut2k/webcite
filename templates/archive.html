@@ -208,10 +208,13 @@
         
         {% if record.content.text or record.content.markdown %}
         <div class="tabs">
-            {% if record.full_page and record.full_page.available %}
-            <button class="tab-btn" onclick="switchTab('original')">Original (photos/videos)</button>
+            {% if record.article_view and record.article_view.available %}
+            <button class="tab-btn active" onclick="switchTab('article')">📰 Article (photos/video)</button>
             {% endif %}
-            <button class="tab-btn active" onclick="switchTab('content')">Rendered</button>
+            {% if record.full_page and record.full_page.available %}
+            <button class="tab-btn" onclick="switchTab('original')">Original page</button>
+            {% endif %}
+            <button class="tab-btn {% if not (record.article_view and record.article_view.available) %}active{% endif %}" onclick="switchTab('content')">Rendered</button>
             {% if record.downloaded_images %}
             <button class="tab-btn" onclick="switchTab('images')">Images ({{ record.downloaded_images }})</button>
             {% endif %}
@@ -220,15 +223,15 @@
             {% endif %}
         </div>
 
-        {% if record.full_page and record.full_page.available %}
-        <div id="tab-original" class="tab-panel">
+        {% if record.article_view and record.article_view.available %}
+        <div id="tab-article" class="tab-panel active">
             <div style="margin-bottom:10px;font-size:13px;color:var(--text-muted);">
-                🖼 {{ record.full_page.images_downloaded }} photos · 
-                🎬 {{ record.full_page.videos_downloaded }} videos downloaded · 
-                📡 {{ record.full_page.hls_streams }} streams proxied
-                — <a href="/a/{{ record.id }}/original" target="_blank">open full page ↗</a>
+                📰 Complete article — {{ record.article_view.paragraphs }} paragraphs · 
+                🖼 {{ record.article_view.images_downloaded }} photos · 
+                🎬 {{ record.article_view.video_embeds }} videos
+                — <a href="/a/{{ record.id }}/article" target="_blank">open article view ↗</a>
             </div>
-            <iframe src="/a/{{ record.id }}/original" style="width:100%;height:75vh;border:1px solid var(--border);border-radius:8px;background:#fff;"></iframe>
+            <iframe src="/a/{{ record.id }}/article" style="width:100%;height:75vh;border:1px solid var(--border);border-radius:8px;background:#fff;"></iframe>
         </div>
         {% endif %}
         

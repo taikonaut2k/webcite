@@ -223,6 +223,8 @@ def capture_full_page(url, archive_dir, timeout=50, max_images=40, max_video_mb=
                 result["videos_found"] += 1
 
     # ── 5. Rewrite HTML ──
+    # Save pristine copy FIRST (article builder needs original URLs)
+    (archive_dir / "page_orig.html").write_text(html, encoding="utf-8")
     new_html = _rewrite_html(html, mapping)
 
     # Inject a small banner so it's clear this is an archived copy

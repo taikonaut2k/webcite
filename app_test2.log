@@ -1,0 +1,57 @@
+
+╔═══════════════════════════════════════════════════╗
+║   🌐 WebCite — Modern Web Archiving Service      ║
+╠═══════════════════════════════════════════════════╣
+║   Powered by Scrapling + r.jina.ai               ║
+║                                                   ║
+║   Open: http://localhost:5000                     ║
+║   API:  http://localhost:5000/api/archive         ║
+╚═══════════════════════════════════════════════════╝
+
+ * Serving Flask app 'app'
+ * Debug mode: on
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.26.146.192:5000
+Press CTRL+C to quit
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 119-215-788
+127.0.0.1 - - [07/Aug/2026 12:28:30] "GET / HTTP/1.1" 200 -
+[2026-08-07 12:28:41] INFO: Fetched (200) <GET https://edition.cnn.com/2026/08/07/middleeast/yemen-iran-war-explainer-intl> (referer: https://www.google.com/)
+127.0.0.1 - - [07/Aug/2026 12:28:49] "POST /archive HTTP/1.1" 302 -
+ * Detected change in '/tmp/webcite/media_archiver.py', reloading
+
+╔═══════════════════════════════════════════════════╗
+║   🌐 WebCite — Modern Web Archiving Service      ║
+╠═══════════════════════════════════════════════════╣
+║   Powered by Scrapling + r.jina.ai               ║
+║                                                   ║
+║   Open: http://localhost:5000                     ║
+║   API:  http://localhost:5000/api/archive         ║
+╚═══════════════════════════════════════════════════╝
+
+  Trying r.jina.ai reader proxy...
+  ✅ r.jina.ai reader proxy succeeded
+  📸 Full-page media capture for https://edition.cnn.com/2026/08/07/middleeast/yemen-iran-war-explainer-intl...
+    ✅ Full page: 39 imgs, 0 vids, 0 HLS
+  📰 Building media-rich article view...
+    ✅ Article view: 27 paras, 0 imgs, 0 vids
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 119-215-788
+ * Detected change in '/tmp/webcite/archiver.py', reloading
+
+╔═══════════════════════════════════════════════════╗
+║   🌐 WebCite — Modern Web Archiving Service      ║
+╠═══════════════════════════════════════════════════╣
+║   Powered by Scrapling + r.jina.ai               ║
+║                                                   ║
+║   Open: http://localhost:5000                     ║
+║   API:  http://localhost:5000/api/archive         ║
+╚═══════════════════════════════════════════════════╝
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 119-215-788

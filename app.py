@@ -215,6 +215,15 @@ def view_original(archive_id):
         return "No full-page capture available for this archive", 404
     return send_from_directory(str(archive_dir), "page_full.html")
 
+@app.route("/a/<archive_id>/article")
+def view_article(archive_id):
+    """View complete article with photos + video (paywall-bypassed)."""
+    archive_dir = ARCHIVES_DIR / archive_id
+    art_path = archive_dir / "article.html"
+    if not art_path.exists():
+        return "No article view available for this archive", 404
+    return send_from_directory(str(archive_dir), "article.html")
+
 
 @app.route("/site/<archive_id>/<path:filename>")
 def serve_archive_file(archive_id, filename):

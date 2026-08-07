@@ -758,6 +758,41 @@ def capture_url(url, premium=False):
             record["full_page"] = {"available": False, "error": str(e)}
             print(f"    ⚠ Full page exception: {e}")
     
+    # ── Article view (full text + photos + video, paywall-bypassed) ──
+    # Extracts the complete article from JSON-LD (CNN ships articleBody even
+    # behind the visual paywall) and renders a clean media-rich page.
+    if result["success"]:
+        try:
+            from article_builder import build_article
+            print(f"  📰 Building media-rich article view...")
+            # Get the full page HTML (from full-page capture if available,
+            # otherwise fetch raw). Prefer the PRISTINE copy (original URLs)
+            # so the article builder can download fresh images.
+            full_html = None
+            if (archive_dir / "page_orig.html").exists():
+                full_html = (archive_dir / "page_orig.html").read_text(encoding="utf-8", errors="replace")
+            elif (archive_dir / "page_full.html").exists():
+                full_html = (archive_dir / "page_full.html").read_text(encoding="utf-8", errors="replace")
+            else:
+                full_html = result.get("html") or ""
+                if not full_html and result.get("raw_text"):
+                    full_html = result.get("raw_text")
+            if full_html:
+                article_html, stats = build_article(archive_dir, url, full_html)
+                if article_html:
+                    (archive_dir / "article.html").write_text(article_html, encoding="utf-8")
+                    record["article_view"] = {
+                        "available": True,
+                        "headline": stats.get("headline", "")[:120],
+                        "paragraphs": stats.get("paragraphs", 0),
+                        "images_downloaded": stats.get("images", {}).get("downloaded", 0),
+                        "video_embeds": stats.get("video_embeds", 0),
+                        "file": "article.html",
+                    }
+                    print(f"    ✅ Article view: {stats['paragraphs']} paras, {stats['images']['downloaded']} imgs, {stats['video_embeds']} vids")
+        except Exception as e:
+            print(f"    ⚠ Article view exception: {e}")
+    
     # Save metadata
     with open(archive_dir / "metadata.json", "w", encoding="utf-8") as f:
         json.dump(record, f, indent=2, default=str)
