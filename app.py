@@ -7,13 +7,16 @@ Run: python3 app.py
 Then open: http://localhost:5000
 """
 
-from flask import Flask, request, render_template, jsonify, redirect, url_for, send_from_directory
-import json, os, time, threading
+from flask import Flask, request, render_template, jsonify, redirect, url_for, send_from_directory, Response
+import json, os, time, threading, re
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlparse, unquote
+import urllib.request
 
 # Import our archiver
 from archiver import capture_url, get_archive, search_archives, load_index, ARCHIVES_DIR
+from media_archiver import capture_full_page
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24).hex()
@@ -149,6 +152,69 @@ def search():
     if q:
         results = search_archives(q)
     return render_template("search.html", query=q, results=results)
+
+# ═══════════════════════════════════════════════════════════════════
+#  MEDIA PROXY (stream remote media through WebCite)
+#  — Lets users watch archived videos even when the origin is blocked
+#  — Supports HLS (.m3u8): rewrites segment URLs to keep them proxied
+#  — Supports HTTP Range for video seeking
+# ═══════════════════════════════════════════════════════════════════
+
+MEDIA_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+
+@app.route("/proxy")
+def proxy_media():
+    """Stream a remote media URL through WebCite."""
+    target = request.args.get("url", "")
+    if not target:
+        return "Missing url param", 400
+    if not target.startswith(('http://', 'https://')):
+        return "Invalid url", 400
+
+    try:
+        headers = {"User-Agent": MEDIA_UA, "Accept": "*/*", "Referer": target}
+        # Forward Range header for video seeking
+        rng = request.headers.get("Range")
+        if rng:
+            headers["Range"] = rng
+
+        req = urllib.request.Request(target, headers=headers)
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            content = resp.read()
+            status = resp.status
+            ctype = resp.headers.get("Content-Type", "application/octet-stream")
+
+        # ── HLS playlist: rewrite segment URLs to keep them proxied ──
+        if target.endswith(".m3u8") or ".m3u8?" in target:
+            text = content.decode("utf-8", errors="replace")
+            base = target[:target.rfind("/") + 1]
+            lines = []
+            for line in text.split("\n"):
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    seg_url = line if line.startswith("http") else base + line
+                    lines.append(f"/proxy?url={urllib.parse.quote(seg_url, safe='')}")
+                else:
+                    lines.append(line)
+            content = "\n".join(lines).encode()
+            ctype = "application/vnd.apple.mpegurl"
+
+        resp_headers = {"Content-Type": ctype, "Cache-Control": "public, max-age=3600"}
+        if rng and status == 206:
+            resp_headers["Content-Range"] = resp.headers.get("Content-Range", "")
+        return Response(content, status=status, headers=resp_headers)
+    except Exception as e:
+        return f"Proxy error: {e}", 502
+
+@app.route("/a/<archive_id>/original")
+def view_original(archive_id):
+    """View archived page in original form (media-rich HTML)."""
+    archive_dir = ARCHIVES_DIR / archive_id
+    full_path = archive_dir / "page_full.html"
+    if not full_path.exists():
+        return "No full-page capture available for this archive", 404
+    return send_from_directory(str(archive_dir), "page_full.html")
+
 
 @app.route("/site/<archive_id>/<path:filename>")
 def serve_archive_file(archive_id, filename):

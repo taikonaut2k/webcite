@@ -208,6 +208,9 @@
         
         {% if record.content.text or record.content.markdown %}
         <div class="tabs">
+            {% if record.full_page and record.full_page.available %}
+            <button class="tab-btn" onclick="switchTab('original')">Original (photos/videos)</button>
+            {% endif %}
             <button class="tab-btn active" onclick="switchTab('content')">Rendered</button>
             {% if record.downloaded_images %}
             <button class="tab-btn" onclick="switchTab('images')">Images ({{ record.downloaded_images }})</button>
@@ -217,6 +220,18 @@
             {% endif %}
         </div>
 
+        {% if record.full_page and record.full_page.available %}
+        <div id="tab-original" class="tab-panel">
+            <div style="margin-bottom:10px;font-size:13px;color:var(--text-muted);">
+                🖼 {{ record.full_page.images_downloaded }} photos · 
+                🎬 {{ record.full_page.videos_downloaded }} videos downloaded · 
+                📡 {{ record.full_page.hls_streams }} streams proxied
+                — <a href="/a/{{ record.id }}/original" target="_blank">open full page ↗</a>
+            </div>
+            <iframe src="/a/{{ record.id }}/original" style="width:100%;height:75vh;border:1px solid var(--border);border-radius:8px;background:#fff;"></iframe>
+        </div>
+        {% endif %}
+        
         <div id="tab-content" class="tab-panel active">
             {% if record.content.markdown %}
             <div class="markdown-content">

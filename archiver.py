@@ -734,6 +734,30 @@ def capture_url(url, premium=False):
     if result.get("downloaded_images", 0) > 0:
         record["downloaded_images"] = result["downloaded_images"]
     
+    # ── Full-page media capture (original form with photos + videos) ──
+    # Runs after text capture succeeds. Best-effort: never fails the archive.
+    if result["success"]:
+        try:
+            from media_archiver import capture_full_page
+            print(f"  📸 Full-page media capture for {url}...")
+            fp = capture_full_page(url, archive_dir)
+            if fp["success"]:
+                record["full_page"] = {
+                    "available": True,
+                    "images_downloaded": fp["images_downloaded"],
+                    "videos_downloaded": fp["videos_downloaded"],
+                    "hls_streams": fp["hls_streams"],
+                    "videos_found": fp["videos_found"],
+                    "file": "page_full.html",
+                }
+                print(f"    ✅ Full page: {fp['images_downloaded']} imgs, {fp['videos_downloaded']} vids, {fp['hls_streams']} HLS")
+            else:
+                record["full_page"] = {"available": False, "error": fp.get("error", "unknown")}
+                print(f"    ⚠ Full page failed: {fp.get('error')}")
+        except Exception as e:
+            record["full_page"] = {"available": False, "error": str(e)}
+            print(f"    ⚠ Full page exception: {e}")
+    
     # Save metadata
     with open(archive_dir / "metadata.json", "w", encoding="utf-8") as f:
         json.dump(record, f, indent=2, default=str)
