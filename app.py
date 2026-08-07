@@ -7,16 +7,19 @@ Run: python3 app.py
 Then open: http://localhost:5000
 """
 
-from flask import Flask, request, render_template, jsonify, redirect, url_for, send_from_directory, Response
+from flask import Flask, request, render_template, jsonify, redirect, url_for, send_from_directory, Response, make_response
 import json, os, time, threading, re
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse, unquote
 import urllib.request
 
+import uuid
+
 # Import our archiver
 from archiver import capture_url, get_archive, search_archives, load_index, ARCHIVES_DIR
 from media_archiver import capture_full_page
+import visitors
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24).hex()
@@ -71,7 +74,22 @@ def check_rate_limit(client_ip, api_key=None):
 def index():
     """Homepage — archive.today style."""
     recent = load_index().get("archives", [])[:20]
-    return render_template("index.html", recent=recent)
+    
+    # ── Visitor counter ──
+    ua = request.headers.get("User-Agent", "")
+    if not visitors.is_bot(ua):
+        visitor_id = request.cookies.get("wc_v")
+        is_new = not visitor_id
+        if not visitor_id:
+            visitor_id = uuid.uuid4().hex
+        visitors.record_visit(visitor_id)
+        stats = visitors.get_stats()
+        resp = make_response(render_template("index.html", recent=recent, stats=stats))
+        if is_new:
+            resp.set_cookie("wc_v", visitor_id, max_age=365*24*3600, samesite="Lax")
+        return resp
+    
+    return render_template("index.html", recent=recent, stats=visitors.get_stats())
 
 @app.route("/archive", methods=["POST"])
 def archive():

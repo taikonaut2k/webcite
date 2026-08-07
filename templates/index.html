@@ -55,6 +55,23 @@
         .capture-info { margin-top: 16px; font-size: 13px; color: #8b949e; text-align: center; }
         .capture-info code { background: #21262d; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
         
+        /* Visitor counter strip */
+        .stats-strip {
+            display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
+            margin: 28px auto 0; max-width: 700px;
+        }
+        .stat-pill {
+            background: #161b22; border: 1px solid #30363d; border-radius: 999px;
+            padding: 10px 22px; display: flex; align-items: center; gap: 10px;
+            font-size: 14px; color: #8b949e; transition: border-color 0.2s;
+        }
+        .stat-pill:hover { border-color: #58a6ff; }
+        .stat-pill .num {
+            font-size: 20px; font-weight: 800; color: #58a6ff; font-variant-numeric: tabular-nums;
+        }
+        .stat-pill .lbl { font-size: 13px; }
+        .stat-pill .lbl small { display: block; color: #6e7681; font-size: 11px; }
+        
         /* Features */
         .features {
             display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
@@ -132,6 +149,23 @@
                 Captures using up to <strong>4 strategies</strong>: r.jina.ai reader proxy → Scrapling headless browser → HTTP with TLS fingerprint → direct fallback
             </div>
         </div>
+        
+        {% if stats %}
+        <div class="stats-strip">
+            <div class="stat-pill" title="Total pageviews all time">
+                <span class="num">{{ "{:,.0f}".format(stats.total_visits) }}</span>
+                <span class="lbl">visits<small>all time</small></span>
+            </div>
+            <div class="stat-pill" title="Unique visitors (cookie-based)">
+                <span class="num">{{ "{:,.0f}".format(stats.unique_visitors) }}</span>
+                <span class="lbl">visitors<small>unique</small></span>
+            </div>
+            <div class="stat-pill" title="Visits in the last 24h">
+                <span class="num">{{ "{:,.0f}".format(stats.today_visits) }}</span>
+                <span class="lbl">today<small>since midnight UTC</small></span>
+            </div>
+        </div>
+        {% endif %}
         
         {% if error %}
         <div class="error">
