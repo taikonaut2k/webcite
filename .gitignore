@@ -17,3 +17,6 @@ node_modules/
 archived_sites/
 archives/index.json
 api_keys.json
+
+# test artifacts
+app_test*.log
