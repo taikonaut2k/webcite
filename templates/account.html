@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    {{ ad_head_scripts|safe }}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>API Access — WebCite</title>
@@ -82,6 +83,7 @@
     </style>
 </head>
 <body>
+    {% include 'ads_partial.html' %}
     <nav>
         <div class="logo"><span>W</span>ebCite</div>
         <div>

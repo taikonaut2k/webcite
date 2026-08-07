@@ -190,6 +190,16 @@ def build_article(archive_dir, url, html, assets_rel="assets"):
         if individual_figures and (pi + 1) % 3 == 0 and fig_index < len(individual_figures):
             body_html += individual_figures[fig_index]
             fig_index += 1
+        # House ad after ~40% of the article (mid-content slot)
+        if pi == max(1, int(len(paras) * 0.4)):
+            body_html += (f'<div class="wc-ad" id="wcAdMid">'
+                          f'<div class="wc-ad-label">Sponsored</div>'
+                          f'<div class="wc-ad-box">'
+                          f'<div class="ico">⚡</div>'
+                          f'<div class="txt"><strong>Archive pages at scale</strong>'
+                          f'<span>WebCite API — bulk archiving for devs &amp; researchers. From $9/mo.</span></div>'
+                          f'<a class="cta" href="/account">Learn more →</a>'
+                          f'</div></div>')
     # append remaining figures
     for f in individual_figures[fig_index:]:
         body_html += f
@@ -231,6 +241,18 @@ def build_article(archive_dir, url, html, assets_rel="assets"):
   .desc {{ font:15px/1.6 sans-serif; color:#57606a; margin-bottom:20px; }}
   .actions {{ font:13px sans-serif; margin:16px 0; }}
   .actions a {{ color:#1f6feb; margin-right:16px; text-decoration:none; }}
+  .wc-ad {{ max-width:760px; margin:0 auto; padding:0 20px; }}
+  .wc-ad-box {{ background:#fff; border:1px solid #e1e4e8; border-radius:8px;
+    padding:14px 18px; margin:8px 0 24px; display:flex; align-items:center; gap:14px;
+    font-family: sans-serif; box-shadow:0 1px 2px rgba(0,0,0,.04); }}
+  .wc-ad-box .ico {{ font-size:22px; }}
+  .wc-ad-box .txt {{ flex:1; }}
+  .wc-ad-box .txt strong {{ display:block; font-size:14px; color:#24292f; }}
+  .wc-ad-box .txt span {{ font-size:12px; color:#6a737d; }}
+  .wc-ad-box .cta {{ background:#1f6feb; color:#fff; text-decoration:none;
+    padding:7px 14px; border-radius:5px; font-size:12px; font-weight:600; white-space:nowrap; }}
+  .wc-ad-label {{ font:10px sans-serif; color:#9da5af; text-transform:uppercase;
+    letter-spacing:1px; margin:0 0 2px; text-align:center; }}
 </style>
 </head>
 <body>

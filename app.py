@@ -20,9 +20,23 @@ import uuid
 from archiver import capture_url, get_archive, search_archives, load_index, ARCHIVES_DIR
 from media_archiver import capture_full_page
 import visitors
+import ads
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24).hex()
+
+@app.context_processor
+def inject_ads():
+    """Make ad config + rendered slots available to ALL templates."""
+    cfg = ads.ad_config()
+    return {
+        "ads_on": cfg.get("ads_on", True),
+        "ads_enabled": cfg.get("real_network", False),
+        "ad_top": ads.render_ad("top"),
+        "ad_mid": cfg.get("real_network", False),  # real network mid-slot on article pages
+        "ad_mid_html": ads.render_ad("mid"),
+        "ad_head_scripts": ads.ad_head_scripts(),
+    }
 
 # Rate limiting (simple in-memory)
 RATE_LIMITS = {}

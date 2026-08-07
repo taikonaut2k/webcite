@@ -12,3 +12,12 @@ services:
         value: 3.12.0
     domains:
       - pagecite.com
+      # ── Advertising config (flip when traffic justifies real networks) ──
+      # - key: AD_NETWORK
+      #   value: adsense        # adsense | adsterra | aads | none
+      # - key: AD_CLIENT
+      #   value: ca-pub-XXXXXXXXXXXX
+      # - key: AD_SLOT_TOP
+      #   value: XXXXXXXXXX
+      # - key: AD_SLOT_MID
+      #   value: XXXXXXXXXX
