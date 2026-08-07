@@ -581,7 +581,7 @@ def capture_via_curl(url, timeout=15):
 
 # ── Main Capture ────────────────────────────────────────────────────
 
-def capture_url(url, premium=False):
+def capture_url(url, premium=False, fixed_id=None):
     """
     Capture a URL using the best available strategy.
     Returns archive record dict.
@@ -590,7 +590,7 @@ def capture_url(url, premium=False):
     if not parsed.scheme:
         url = "https://" + url
     
-    aid = generate_id(url)
+    aid = fixed_id or generate_id(url)
     safe_name = sanitize_filename(url)
     archive_dir = ARCHIVES_DIR / aid
     archive_dir.mkdir(parents=True, exist_ok=True)

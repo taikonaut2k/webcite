@@ -75,7 +75,7 @@ def index():
 
 @app.route("/archive", methods=["POST"])
 def archive():
-    """Submit a URL for archiving."""
+    """Submit a URL for archiving — returns immediately, captures in background."""
     url = request.form.get("url", "").strip()
     api_key = request.form.get("api_key", "")
     client_ip = request.remote_addr or "unknown"
@@ -88,33 +88,46 @@ def archive():
     if not allowed:
         return render_template("index.html", error=f"Rate limit exceeded. Max {limit} per minute. Use an API key for higher limits.")
     
-    # Capture in background
-    result = {"status": "processing", "url": url}
+    # Pre-generate the archive ID so we can redirect immediately
+    from archiver import generate_id
+    aid = generate_id(url)
+    archive_dir = ARCHIVES_DIR / aid
+    archive_dir.mkdir(parents=True, exist_ok=True)
     
-    def do_capture(url, result_dict):
+    # Status file: processing → done/failed
+    status_file = archive_dir / "capture_status.json"
+    status_file.write_text(json.dumps({"status": "processing", "url": url, "id": aid}))
+    
+    def do_capture(url, aid):
         try:
-            record = capture_url(url)
-            result_dict["status"] = "complete" if record["success"] else "failed"
-            result_dict["record"] = record
-            result_dict["id"] = record.get("id", "")
+            record = capture_url(url, fixed_id=aid)
+            status = "complete" if record["success"] else "failed"
+            status_file.write_text(json.dumps({
+                "status": status, "url": url, "id": aid,
+                "method": record.get("method", ""),
+                "title": record.get("title", ""),
+                "error": None if record["success"] else record.get("note", "capture failed"),
+            }))
         except Exception as e:
-            result_dict["status"] = "error"
-            result_dict["error"] = str(e)
+            status_file.write_text(json.dumps({"status": "error", "url": url, "id": aid, "error": str(e)}))
     
-    capture_thread = threading.Thread(target=do_capture, args=(url, result))
-    capture_thread.start()
-    capture_thread.join(timeout=120)
+    threading.Thread(target=do_capture, args=(url, aid), daemon=True).start()
     
-    if result["status"] == "complete":
-        return redirect(url_for("view", archive_id=result["id"]))
-    elif result["status"] == "failed":
-        return render_template("index.html", 
-            error=f"Capture failed. Tried multiple strategies. URL may be unreachable or requires authentication.",
-            url=url,
-            note=result.get("record", {}).get("note", ""))
-    else:
-        return render_template("index.html", error=f"Capture timed out: {result.get('error', 'unknown error')}")
+    # Return immediately — page polls /archive/status/<id> and redirects when done
+    return render_template("capturing.html", url=url, aid=aid)
     
+@app.route("/archive/status/<archive_id>")
+def archive_status(archive_id):
+    """Poll capture status. Returns JSON."""
+    status_file = ARCHIVES_DIR / archive_id / "capture_status.json"
+    if not status_file.exists():
+        return jsonify({"status": "processing", "id": archive_id})
+    try:
+        with open(status_file) as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify({"status": "processing", "id": archive_id})
+
 @app.route("/a/<archive_id>")
 def view(archive_id):
     """View an archived page."""

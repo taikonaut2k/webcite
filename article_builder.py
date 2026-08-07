@@ -20,6 +20,7 @@ Usage: build_article(archive_dir, url, html) → writes article.html
 import json, os, re
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, quote
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def extract_article_json(html):
@@ -96,44 +97,53 @@ def build_article(archive_dir, url, html, assets_rel="assets"):
     date_mod = article.get("dateModified", "")
     description = article.get("description", "")
 
-    # ── Images: download + build figure blocks ──
+    # ── Images: download (CONCURRENT) + build figure blocks ──
     images = article.get("image", [])
     if isinstance(images, dict):
         images = [images]
 
-    fig_html = ""
-    img_stats = {"downloaded": 0, "total": len(images)}
-    for i, img in enumerate(images[:25]):
+    def dl_image(img):
         if not isinstance(img, dict):
-            continue
+            return None
         content_url = img.get("contentUrl") or img.get("url", "")
         if not content_url:
-            continue
+            return None
         caption = img.get("caption", "")
         credit = img.get("creditText", "")
         src_org = img.get("sourceOrganization", {})
         if isinstance(src_org, dict):
             credit = credit or src_org.get("name", "")
 
-        # Download image
         ext = os.path.splitext(urlparse(content_url).path)[1].lower()
         if ext not in (".jpg", ".jpeg", ".png", ".webp"):
             ext = ".jpg"
-        fname = f"img_{i:03d}{ext}"
-        dest = assets_dir / fname
         try:
             import urllib.request
             req = urllib.request.Request(content_url, headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125 Safari/537.36",
             })
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=25) as resp:
                 data = resp.read()
             if len(data) < 1000:
-                continue
-            dest.write_bytes(data)
-            img_stats["downloaded"] += 1
+                return None
+            return (content_url, caption, credit, ext, data)
         except Exception:
-            continue
+            return None
+
+    img_stats = {"downloaded": 0, "total": len(images)}
+    dl_results = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for fut in as_completed([pool.submit(dl_image, img) for img in images[:25]]):
+            r = fut.result()
+            if r:
+                dl_results.append(r)
+    img_stats["downloaded"] = len(dl_results)
+
+    fig_html = ""
+    for i, (content_url, caption, credit, ext, data) in enumerate(dl_results):
+        fname = f"img_{i:03d}{ext}"
+        dest = assets_dir / fname
+        dest.write_bytes(data)
 
         credit_html = f'<span class="img-credit">{credit}</span>' if credit else ""
         caption_html = f'<figcaption>{caption} {credit_html}</figcaption>' if (caption or credit) else ""

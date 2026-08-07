@@ -15,6 +15,7 @@ Captures a web page in its ORIGINAL FORM:
 import json, os, re, time, urllib.request
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, quote
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 MEDIA_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -193,18 +194,39 @@ def capture_full_page(url, archive_dir, timeout=50, max_images=40, max_video_mb=
     img_idx = 0
     vid_idx = 0
 
-    # ── 3. Download images ──
-    for img_url in sorted(images):
-        if img_idx >= max_images:
-            break
+    # ── 3. Download images (CONCURRENT — much faster than serial) ──
+    def fetch_one(img_url):
         if any(x in img_url.lower() for x in ['icon', 'logo', 'placeholder', 'fallback', 'apple-news', 'bg.', 'crop=w_60']):
-            continue
-        fname = _safe_name(img_url, img_idx, "img")
-        dest = assets_dir / fname
-        if _download(img_url, dest):
-            mapping[img_url] = f"assets/{fname}"
-            img_idx += 1
-            result["images_downloaded"] = img_idx
+            return None
+        fname = _safe_name(img_url, 0, "img")  # index fixed below via dict
+        return img_url, fname
+
+    img_candidates = [u for u in sorted(images)][:max_images]
+
+    # Concurrent download loop:
+    downloaded = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        def work(u):
+            if any(x in u.lower() for x in ['icon', 'logo', 'placeholder', 'fallback', 'apple-news', 'bg.', 'crop=w_60']):
+                return None
+            fname = _safe_name(u, 0, "img")
+            dest = assets_dir / fname
+            return (u, fname) if _download(u, dest, timeout=20) else None
+        for fut in as_completed([pool.submit(work, u) for u in img_candidates]):
+            r = fut.result()
+            if r:
+                downloaded.append(r)
+
+    # Rename to sequential indices (parallel workers may collide)
+    for new_idx, (orig_url, old_fname) in enumerate(downloaded):
+        old_path = assets_dir / old_fname
+        if old_path.exists():
+            new_fname = f"img_{new_idx:03d}{old_path.suffix}"
+            new_path = assets_dir / new_fname
+            if old_path != new_path:
+                old_path.rename(new_path)
+            mapping[orig_url] = f"assets/{new_fname}"
+    result["images_downloaded"] = len(downloaded)
 
     # ── 4. Handle videos ──
     for vid_url in sorted(videos):

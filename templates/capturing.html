@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capturing… — WebCite</title>
+<style>
+    body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+           background: #0d1117; color: #e6edf3; margin: 0;
+           display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { text-align: center; max-width: 460px; padding: 40px; }
+    .spinner { width: 48px; height: 48px; margin: 0 auto 20px;
+               border: 4px solid #30363d; border-top-color: #1f6feb;
+               border-radius: 50%; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h2 { font-size: 20px; margin: 0 0 8px; }
+    .url { color: #8b949e; font-size: 13px; word-break: break-all; margin-bottom: 24px; }
+    .steps { text-align: left; font-size: 13px; color: #8b949e; line-height: 2; }
+    .step.done { color: #3fb950; }
+    .step.active { color: #e6edf3; font-weight: 600; }
+    .bar { height: 4px; background: #30363d; border-radius: 2px; margin: 20px 0; overflow: hidden; }
+    .bar-inner { height: 100%; width: 20%; background: #1f6feb; border-radius: 2px;
+                 animation: grow 4s ease-in-out infinite alternate; }
+    @keyframes grow { from { width: 15%; } to { width: 85%; } }
+    .note { font-size: 12px; color: #6e7681; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="card">
+    <div class="spinner"></div>
+    <h2>Archiving this page…</h2>
+    <div class="url">{{ url }}</div>
+    <div class="bar"><div class="bar-inner"></div></div>
+    <div class="steps">
+        <div class="step" id="s1">1. Fetching page (reader proxy / headless browser)</div>
+        <div class="step" id="s2">2. Downloading photos</div>
+        <div class="step" id="s3">3. Building article view (text + images + video)</div>
+        <div class="step" id="s4">4. Done — redirecting…</div>
+    </div>
+    <div class="note">WebCite — permanent archive · pagecite.com</div>
+</div>
+<script>
+const AID = "{{ aid }}";
+const STEP_NAMES = ["s1", "s2", "s3", "s4"];
+const STEP_DELAYS = [4, 14, 26, 38]; // seconds into capture each step is likely done
+
+let startTime = Date.now();
+let lastStep = 0;
+
+function updateSteps() {
+    const elapsed = (Date.now() - startTime) / 1000;
+    let activeIdx = 0;
+    for (let i = 0; i < STEP_DELAYS.length; i++) {
+        if (elapsed > STEP_DELAYS[i]) activeIdx = i;
+    }
+    STEP_NAMES.forEach((id, i) => {
+        const el = document.getElementById(id);
+        el.className = "step" + (i < activeIdx ? " done" : i === activeIdx ? " active" : "");
+        if (i < activeIdx) el.textContent = "✅ " + el.textContent.replace(/^[✅⚠️ ]+/, "");
+    });
+    if (activeIdx >= 3) {
+        document.getElementById("s4").className = "step active";
+    }
+}
+
+async function poll() {
+    try {
+        const r = await fetch("/archive/status/" + AID, { cache: "no-store" });
+        const data = await r.json();
+        updateSteps();
+        if (data.status === "complete") {
+            document.getElementById("s1").className = "step done";
+            document.getElementById("s1").textContent = "✅ " + document.getElementById("s1").textContent.replace(/^[✅⚠️ ]+/, "");
+            document.getElementById("s2").className = "step done";
+            document.getElementById("s2").textContent = "✅ " + document.getElementById("s2").textContent.replace(/^[✅⚠️ ]+/, "");
+            document.getElementById("s3").className = "step done";
+            document.getElementById("s3").textContent = "✅ " + document.getElementById("s3").textContent.replace(/^[✅⚠️ ]+/, "");
+            document.getElementById("s4").className = "step done";
+            document.getElementById("s4").textContent = "✅ Done — opening archive…";
+            setTimeout(() => { window.location.href = "/a/" + AID; }, 600);
+            return;
+        } else if (data.status === "failed" || data.status === "error") {
+            window.location.href = "/?error=capture_failed&url=" + encodeURIComponent(data.url || "");
+            return;
+        }
+    } catch (e) {
+        // transient — keep polling
+    }
+    setTimeout(poll, 2500);
+}
+poll();
+</script>
+</body>
+</html>
