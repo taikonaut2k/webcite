@@ -255,7 +255,7 @@ def build_article(archive_dir, url, html, assets_rel="assets"):
     letter-spacing:1px; margin:0 0 2px; text-align:center; }}
 </style>
 <!-- Cloudflare Web Analytics -->
-<script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "9364c33b93b74e259308f1f2b3f52cb6"}'></script>
+<script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{{"token": "9364c33b93b74e259308f1f2b3f52cb6"}}'></script>
 <!-- End Cloudflare Web Analytics -->
 </head>
 <body>
