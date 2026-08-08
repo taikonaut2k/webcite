@@ -254,6 +254,9 @@ def build_article(archive_dir, url, html, assets_rel="assets"):
   .wc-ad-label {{ font:10px sans-serif; color:#9da5af; text-transform:uppercase;
     letter-spacing:1px; margin:0 0 2px; text-align:center; }}
 </style>
+<!-- Cloudflare Web Analytics -->
+<script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "9364c33b93b74e259308f1f2b3f52cb6"}'></script>
+<!-- End Cloudflare Web Analytics -->
 </head>
 <body>
 <div class="wc-bar">📄 WebCite — complete article with photos &amp; video · <a href="#" style="color:#fff" onclick="window.print();return false;">Print</a></div>
